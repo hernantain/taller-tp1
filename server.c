@@ -1,5 +1,3 @@
-#define _POSIX_C_SOURCE 200112L
-
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
@@ -13,114 +11,86 @@
 #include <stdbool.h>
 #include "common.h"
 #include "server_utils.h"
+#include "common_sockets.h"
+#include "server_user_agent_list.h"
+#include "server_sensor.h"
+#include "server_template.h"
+#include "server_request_manager.h"
 
 #define MAX_HTTP_REQUEST_LEN 512
 
-int main(int argc, char *argv[]) {
-	struct addrinfo hints, *results;
-	unsigned int sockfd, newsockfd = 0;
-	const char *port, *sensor_file, *template_file;
-	char *user_agent;
-	int num;
-	FILE *tf, *f;
-	list_t visitors;
-	request_answer_t answer;
+#define PORT 1
+#define SENSOR 2
+#define TEMPLATE 3
+#define ALL_ARGS 4
 
-	if (argc != 4){
+int main(int argc, char *argv[]) {
+
+	if (argc != ALL_ARGS){
 		fprintf(stderr,
 			"Uso:\n./server <port> <sensor-filename> <template-filename>\n");
 		exit(1);
 	}
 
-	port = argv[1];
-	sensor_file = argv[2];
-	template_file = argv[3];
+	request_manager_t req;
+	template_t template;
 
-	f = fopen(sensor_file, "rb");
-	if (f == NULL)
-		exit(1);
+	sensor_t sensor;
+	sensor_create(&sensor, argv[SENSOR]);
 
-	memset(&hints, 0, sizeof(struct addrinfo));
-	hints.ai_family = AF_INET;
-	hints.ai_socktype = SOCK_STREAM;
-	hints.ai_flags = AI_PASSIVE;
+	socket_t acceptor_skt, exchange_skt;
+	create_acceptor_socket(&acceptor_skt, argv[PORT]);
 
-	int status = getaddrinfo(NULL, port, &hints, &results);
-	if (status != 0){
-		perror("getaddrinfo");
-		exit(1);
-	}
-
-	if ((sockfd = socket(results->ai_family,results->ai_socktype,0)) < 0){
-		perror("creando socket");
-		printf("%sn",strerror(errno));
-		freeaddrinfo(results);
-		exit(1);
-	}
-
-	if ( bind(sockfd, results->ai_addr, results->ai_addrlen) < 0 ) {
-		perror("bind");
-		printf("%sn",strerror(errno));
-		freeaddrinfo(results);
-		exit(1);
-	}
-
-	freeaddrinfo(results);
-
-	if ( listen(sockfd, 10) == -1 ) {
-		perror("listen");
-		printf("%s\n", strerror(errno));
-		exit(1);
-	}
-	
+	list_t visitors;
 	list_create(&visitors);
+	
 	bool running = true; 
-	num = read_sensor_data(f);
+	int num = sensor_get_num(&sensor);
+
 	while(running){
-		newsockfd = accept(sockfd, NULL, NULL);   
-		if (newsockfd == -1) {
+		exchange_skt = socket_accept(&acceptor_skt);
+		if (exchange_skt.fd == -1) {
 			printf("Accept Error: %s\n", strerror(errno));
 		} else {
-			char http_req[MAX_HTTP_REQUEST_LEN];
-			memset(http_req, 0, MAX_HTTP_REQUEST_LEN);
-			receive_message(newsockfd, http_req, MAX_HTTP_REQUEST_LEN); 
-			shutdown(newsockfd, SHUT_RD);
+
+			socket_receive(&exchange_skt, req.orig_request, MAX_HTTP_REQUEST_LEN); 
+			socket_turnoff_channel(&exchange_skt, SHUT_RD);
 			
-			request_answer_create(&answer);
-			answer.header = process_request(http_req);
+			request_create(&req);
+			process_request(&req);
 
-			if (valid_request(answer.header)) {
-				user_agent = get_user(http_req);
-				list_add_element(&visitors,user_agent);
+			if (valid_request(&req)) {
+				request_load_user(&req);
+				list_add_element(&visitors,req.user);
 
-				tf = fopen(template_file, "rt");
-				if (tf == NULL) 
-					exit(1);
-				
-				answer.body = get_file_content(tf);
-				replace_template_with_temperature(answer.body,num);
+				template_create(&template, argv[TEMPLATE]);
 
-				send_message(newsockfd, answer.header, (int) strlen(answer.header));
-				send_message(newsockfd, answer.body, (int) strlen(answer.body));
-				num = read_sensor_data(f);
+				req.body = template_get_content(&template);
+				replace_template_with_temperature(req.body,num);
 
-				free(answer.body);
-				fclose(tf);
+				socket_send(&exchange_skt, req.header, (int) strlen(req.header));
+				socket_send(&exchange_skt, req.body, (int) strlen(req.body));
+				num = sensor_get_num(&sensor);
+
+				free(req.body);
+				template_destroy(&template);
 				if (num == -1)
 					running = false;
 
 			} else {
-				send_message(newsockfd, answer.header, (int) strlen(answer.header));
+				socket_send(&exchange_skt, req.header, (int) strlen(req.header));
 			}	
 		}
-		shutdown(newsockfd, SHUT_RDWR);
-		close(newsockfd);
+		socket_turnoff_channel(&exchange_skt, SHUT_RDWR);
+		socket_close(&exchange_skt);
 	}
 
-	shutdown(newsockfd, SHUT_RDWR);
-	close(newsockfd);
-	close(sockfd);
-	fclose(f);
+	socket_turnoff_channel(&exchange_skt, SHUT_RDWR);
+	socket_close(&exchange_skt);
+	socket_close(&acceptor_skt);
+	sensor_destroy(&sensor);
+	
+
 	fprintf(stdout,"# Estadisticas de visitantes\n\n");
 	
 	node_t *visit = visitors.first;

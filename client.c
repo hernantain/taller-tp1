@@ -1,5 +1,4 @@
-#define _POSIX_C_SOURCE 200112L
-#define _GNU_SOURCE
+#define _POSIX_C_SOURCE 200809L
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -12,81 +11,55 @@
 #include <sys/socket.h>
 #include <arpa/inet.h>
 #include <stdbool.h>
+#include "common_sockets.h"
 #include "common.h"
 
 #define MAX_HTTP_RESPONSE 1024
 
+#define HOST 1
+#define PORT 2
+#define FILENAME 3
+
 
 int main(int argc, char* argv[]) {
-	const char *filename;
-	const char *host, *port;
-	char *line = NULL;
-	size_t len = 0, nread;
+	size_t nread;
 	FILE *f = 0;
-	int sockfd;
-	struct addrinfo hints, *results, *rp;
 	bool connected = true;
 
 	if ((argc < 3) | (argc > 4)) {
 		fprintf(stderr,"Uso:\n./client <host> <port> [<filename>]\n");
 		exit(1);
 	} else if (argc == 4) {
-		filename = argv[3];
+		const char *filename = argv[FILENAME];
 		f = fopen(filename, "rt");
 		if (f == NULL)
 			exit(1);
 	} 
 
-	host = argv[1];
-	port = argv[2];
+	socket_t socket;
+	socket_create(&socket, argv[HOST], argv[PORT]);
 
-	memset(&hints, 0, sizeof(struct addrinfo));
-	hints.ai_family = AF_INET;
-	hints.ai_socktype = SOCK_STREAM;
-	hints.ai_flags = 0;
-
-	int status = getaddrinfo(host, port,&hints,&results);
-
-	if (status != 0){
-		perror("getaddrinfo");
-		exit(1);
-	}
-
-	sockfd = -1;
-	for (rp = results; rp != NULL; rp = rp->ai_next) {
-		sockfd = socket(rp->ai_family, rp->ai_socktype, rp->ai_protocol);
-		if (sockfd == -1) {
-			printf("Error: %s\n", strerror(errno));
-			continue;
-		} 
-
-		if (connect(sockfd, rp->ai_addr, rp->ai_addrlen) != -1)
-			break;
-
-		close(sockfd); 
-	}
-
-	/********************************************SOCKET DEF *********/
+	char *line = NULL;
+	size_t len = 0;
 	while (connected) {
 		if (argc == 3) {
 			while ((nread = getline(&line, &len, stdin)) != -1) {
-				send_message(sockfd, line, (int) strlen(line));
+				socket_send(&socket, line, (int) strlen(line));
 			}
 		} else {
 			while ((nread = getline(&line, &len, f)) != -1) 
-				send_message(sockfd, line, (int) strlen(line) );
+				socket_send(&socket, line, (int) strlen(line) );
 		}
 
-		shutdown(sockfd, SHUT_WR);
+		socket_turnoff_channel(&socket, SHUT_WR);
 		char response[MAX_HTTP_RESPONSE];
 		memset(response, 0, MAX_HTTP_RESPONSE);
-		receive_message(sockfd, response, MAX_HTTP_RESPONSE);
+		socket_receive(&socket, response, MAX_HTTP_RESPONSE);
 		printf("%s", response);
-		shutdown(sockfd,SHUT_RD);
+		socket_turnoff_channel(&socket,SHUT_RD);
 		connected = false;
 	}
 
-	freeaddrinfo(results);
 	free(line);
 	
 	if (argc == 4) 
