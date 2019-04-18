@@ -25,7 +25,6 @@
 #define ALL_ARGS 4
 
 int main(int argc, char *argv[]) {
-
 	if (argc != ALL_ARGS){
 		fprintf(stderr,
 			"Uso:\n./server <port> <sensor-filename> <template-filename>\n");
@@ -52,7 +51,6 @@ int main(int argc, char *argv[]) {
 		if (exchange_skt.fd == -1) {
 			printf("Accept Error: %s\n", strerror(errno));
 		} else {
-
 			socket_receive(&exchange_skt, req.orig_request, MAX_HTTP_REQUEST_LEN); 
 			socket_turnoff_channel(&exchange_skt, SHUT_RD);
 			
@@ -86,11 +84,9 @@ int main(int argc, char *argv[]) {
 	}
 
 	socket_turnoff_channel(&exchange_skt, SHUT_RDWR);
-	socket_close(&exchange_skt);
 	socket_close(&acceptor_skt);
 	sensor_destroy(&sensor);
 	
-
 	fprintf(stdout,"# Estadisticas de visitantes\n\n");
 	
 	node_t *visit = visitors.first;

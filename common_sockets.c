@@ -15,7 +15,6 @@
 
 
 void socket_create(socket_t *skt, const char *host, const char *port) {
-
 	struct addrinfo hints, *results, *rp;
 
 	memset(&hints, 0, sizeof(struct addrinfo));
@@ -30,7 +29,6 @@ void socket_create(socket_t *skt, const char *host, const char *port) {
 		exit(1);
 	}
 
-	//freeaddrinfo(results);
 	for (rp = results; rp != NULL; rp = rp->ai_next) {
 		skt->fd = socket(rp->ai_family, rp->ai_socktype, rp->ai_protocol);
 		if (skt->fd == -1) {
@@ -53,7 +51,6 @@ void socket_turnoff_channel(socket_t *skt, int mode) {
 
 
 void create_acceptor_socket(socket_t *skt, const char *port) {
-
 	struct addrinfo hints, *results;
 
 	memset(&hints, 0, sizeof(struct addrinfo));
@@ -89,7 +86,6 @@ void create_acceptor_socket(socket_t *skt, const char *port) {
 		printf("%s\n", strerror(errno));
 		exit(1);
 	}
-
 }
 
 void socket_send(socket_t *sock, char *buf, int size) {

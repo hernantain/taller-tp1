@@ -19,17 +19,16 @@
 #define HOST 1
 #define PORT 2
 #define FILENAME 3
-
+#define MIN_ARGS 3
+#define MAX_ARGS 4
 
 int main(int argc, char* argv[]) {
-	size_t nread;
 	FILE *f = 0;
-	bool connected = true;
 
-	if ((argc < 3) | (argc > 4)) {
+	if ((argc < MIN_ARGS) | (argc > MAX_ARGS)) {
 		fprintf(stderr,"Uso:\n./client <host> <port> [<filename>]\n");
 		exit(1);
-	} else if (argc == 4) {
+	} else if (argc == MAX_ARGS) {
 		const char *filename = argv[FILENAME];
 		f = fopen(filename, "rt");
 		if (f == NULL)
@@ -39,10 +38,12 @@ int main(int argc, char* argv[]) {
 	socket_t socket;
 	socket_create(&socket, argv[HOST], argv[PORT]);
 
+	size_t nread;
+	bool connected = true;
 	char *line = NULL;
 	size_t len = 0;
 	while (connected) {
-		if (argc == 3) {
+		if (argc == MIN_ARGS) {
 			while ((nread = getline(&line, &len, stdin)) != -1) {
 				socket_send(&socket, line, (int) strlen(line));
 			}
@@ -62,7 +63,7 @@ int main(int argc, char* argv[]) {
 
 	free(line);
 	
-	if (argc == 4) 
+	if (argc == MAX_ARGS) 
 		fclose(f);
 
 	return 0;
